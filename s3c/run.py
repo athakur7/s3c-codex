@@ -6,12 +6,18 @@ import json
 import logging
 import os
 import random
+import sys
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from tqdm import tqdm
+
+# Ensure local package resolution (important in Kaggle where another `s3c` can exist).
+PROJECT_DIR = Path(__file__).resolve().parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
 
 from s3c.baseline.hashemzadeh import run_baseline
 from s3c.config import S3CConfig
