@@ -6,7 +6,7 @@ from pathlib import Path
 
 def test_smoke_run() -> None:
     root = Path(__file__).resolve().parents[1]
-    data_dir = root.parent / "data" / "SBU-shadow" / "SBU-Test"
+    data_dir = root / "data" / "SBU-shadow" / "SBU-Test"
     out_dir = root / "outputs"
     cmd = [
         "python",

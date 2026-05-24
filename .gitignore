@@ -1,7 +1,7 @@
 data/
 **/data/
-!s3c/s3c/data/
-!s3c/s3c/data/**
+!s3c/data/
+!s3c/data/**
 outputs/
 **/outputs/
 __pycache__/
