@@ -1,0 +1,13 @@
+data/
+**/data/
+outputs/
+**/outputs/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+*.log
+*.tmp
+*.pdf
+*.zip
