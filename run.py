@@ -26,7 +26,7 @@ from s3c.metrics.image_metrics import ssim_vs_rescaled
 from s3c.metrics.shadow_metrics import shadow_iou, shadow_preservation_ratio
 from s3c.metrics.structure_metrics import structure_edge_corr
 from s3c.s3c_method import run_s3c
-from s3c.utils import configure_logging, read_rgb, save_json, save_png, timestamped_run_dir
+from s3c.utils import configure_logging, normalize_map, read_rgb, save_json, save_png, timestamped_run_dir
 from s3c.viz.compare import save_comparison_panel, save_global_grid
 
 logger = logging.getLogger("s3c.run")
@@ -144,7 +144,7 @@ def process_one(sample: ImageSample, config: S3CConfig, run_dir: Path) -> dict[s
 
     if "baseline" in config.methods:
         baseline = run_baseline(image, target_w, config, initial_mask=gt_mask)
-        save_png(img_dir / "importance_baseline.png", baseline.importance)
+        save_png(img_dir / "importance_baseline.png", normalize_map(baseline.importance))
         save_png(img_dir / "seams_baseline.png", baseline.seam_overlay)
         save_png(img_dir / "resized_baseline.png", baseline.image)
         save_png(img_dir / "carved_mask_baseline.png", baseline.mask)
@@ -160,7 +160,7 @@ def process_one(sample: ImageSample, config: S3CConfig, run_dir: Path) -> dict[s
 
     if "s3c" in config.methods:
         s3c_res = run_s3c(image, target_w, config, sample.mask_path, initial_mask=gt_mask)
-        save_png(img_dir / "importance_s3c.png", s3c_res.importance)
+        save_png(img_dir / "importance_s3c.png", normalize_map(s3c_res.importance))
         save_png(img_dir / "seams_s3c.png", s3c_res.seam_overlay)
         save_png(img_dir / "resized_s3c.png", s3c_res.image)
         save_png(img_dir / "carved_mask_s3c.png", s3c_res.mask)

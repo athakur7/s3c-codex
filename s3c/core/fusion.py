@@ -30,5 +30,6 @@ def s3c_fusion(
     boundary = (np.sqrt(gx * gx + gy * gy) > 0.05).astype(np.float32)
     struct_hard = (e_str > tau_struct).astype(np.float32)
     m = float(np.max(e_base) + 1e-8)
+    # Keep raw energy scale for DP so large penalties remain dominant.
     e = e_base + (p_shadow_mult * m) * boundary + (p_struct_mult * m) * struct_hard
-    return normalize_map(e), e_base
+    return e.astype(np.float32), e_base.astype(np.float32)
