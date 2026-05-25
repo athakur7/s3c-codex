@@ -1,67 +1,159 @@
 # S3C: Shadow- and Structure-Preserving Seam Carving
 
-## Install
+This repository implements three content-aware width-reduction methods for head-to-head comparison:
+
+- `basic`: classic seam carving (backward energy)
+- `baseline`: Hashemzadeh-style shadow-preserving seam carving (2019-inspired)
+- `s3c`: proposed Shadow- and Structure-Preserving Seam Carving (S3C)
+
+It produces per-image visual artifacts plus aggregate metrics to verify whether S3C outperforms baseline methods.
+
+## What We Built
+
+- Full CPU pipeline in Python (no deep learning):
+  - Gradient, saliency, shadow, and structure maps
+  - Forward-energy seam DP
+  - Seam-consistent map/mask carving
+  - Per-image and batch-level visualization
+  - CSV/JSON metrics output
+- Optional 2-method or 3-method comparison in one command:
+  - `--methods s3c,baseline`
+  - `--methods basic,baseline,s3c`
+- Local and Kaggle-compatible runner with process-level parallelism.
+
+## Repository Layout
+
+```text
+.
+├── run.py
+├── requirements.txt
+├── README.md
+├── RESULTS.md
+├── s3c/
+│   ├── __init__.py
+│   ├── config.py
+│   ├── utils.py
+│   ├── s3c_method.py
+│   ├── core/
+│   ├── carve/
+│   ├── baseline/
+│   ├── metrics/
+│   ├── data/
+│   └── viz/
+└── tests/
+```
+
+## Installation
+
+## Local (Windows/Linux/macOS)
 
 ```bash
 python -m venv .venv
+# Windows
 .venv\Scripts\activate
+# Linux/macOS
+# source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Example Run
+## Kaggle
 
-This command works on both local and Kaggle when your dataset follows one of the supported defaults:
+```bash
+!git clone https://github.com/athakur7/s3c-codex.git /kaggle/working/s3c-codex
+%cd /kaggle/working/s3c-codex
+!pip install -r requirements.txt -q
+```
+
+## Dataset Expectations
+
+Expected split layout:
+
+```text
+<data-dir>/
+├── ShadowImages/
+└── ShadowMasks/
+```
+
+Image and mask are paired by filename stem, for example:
+
+- `ShadowImages/lssd1.jpg`
+- `ShadowMasks/lssd1.png`
+
+If `--shadow-mode gt` is selected and a mask is missing for an image, that image falls back to `auto` shadow mode with a warning.
+
+## How to Run
+
+## Common options
+
+- `--num-images N` or `--num-images all`
+- `--reduction 0.25` (remove 25% of width)
+- `--methods basic,baseline,s3c` (or any subset)
+- `--executor process --workers K --opencv-threads-per-worker 1`
+- `--output-root <folder>`
+
+## Local examples
+
+### 2-method (S3C vs baseline)
 
 ```bash
 python run.py \
-  --num-images 5 \
-  --seed 42 \
-  --reduction 0.25 \
-  --shadow-mode gt \
-  --methods s3c,baseline \
-  --alpha 1.0 --beta 2.0 --gamma 2.5 --delta 2.0 \
-  --p-shadow 10 --p-struct 10 --tau-struct 0.5 \
-  --lambda-sh 1.0 \
-  --workers 4 \
-  --verbose
-```
-
-Explicit local path example:
-
-```bash
-python run.py --data-dir ../data/SBU-shadow/SBU-Test --output-root ./outputs --num-images 5
-```
-
-Explicit Kaggle path example:
-
-```bash
-python run.py --data-dir /kaggle/input/datasets/anandthakur178/sbu-shadow-zip/SBU-shadow/SBU-Test --output-root /kaggle/working/outputs --num-images 5
-```
-
-## Kaggle Run (CPU-optimized)
-
-```bash
-python run.py \
-  --data-dir /kaggle/input/datasets/anandthakur178/sbu-shadow-zip/SBU-shadow/SBU-Test \
+  --data-dir ./data/SBU-shadow/SBU-Test \
   --images-subdir ShadowImages \
   --masks-subdir ShadowMasks \
-  --num-images 10 \
+  --num-images 100 \
   --seed 42 \
   --reduction 0.25 \
   --shadow-mode gt \
   --methods s3c,baseline \
   --executor process \
-  --workers 7 \
+  --workers 3 \
   --opencv-threads-per-worker 1 \
-  --output-root /kaggle/working/outputs
+  --output-root ./outputs \
+  --verbose
 ```
 
-Notes:
-- `--executor process` is best for CPU-bound seam carving.
-- Keep `--opencv-threads-per-worker 1` to avoid CPU oversubscription when using multiple processes.
-- By default, `run.py` now uses Kaggle-friendly paths and process execution.
+### 3-method (Basic + baseline + S3C)
 
-## Expected Output Tree
+```bash
+python run.py \
+  --data-dir ./data/SBU-shadow/SBU-Test \
+  --images-subdir ShadowImages \
+  --masks-subdir ShadowMasks \
+  --num-images 300 \
+  --seed 42 \
+  --reduction 0.25 \
+  --shadow-mode gt \
+  --methods basic,baseline,s3c \
+  --alpha 1.0 --beta 2.0 --gamma 3.0 --delta 3.0 \
+  --p-shadow 30 --p-struct 20 --tau-struct 0.35 --lambda-sh 3.0 \
+  --executor process \
+  --workers 3 \
+  --opencv-threads-per-worker 1 \
+  --output-root ./outputs
+```
+
+## Kaggle example
+
+```bash
+!python run.py \
+  --data-dir /kaggle/input/datasets/anandthakur178/sbu-shadow-zip/SBU-shadow/SBU-Test \
+  --images-subdir ShadowImages \
+  --masks-subdir ShadowMasks \
+  --num-images 100 \
+  --seed 42 \
+  --reduction 0.25 \
+  --shadow-mode gt \
+  --methods basic,baseline,s3c \
+  --executor process \
+  --workers 3 \
+  --opencv-threads-per-worker 1 \
+  --output-root /kaggle/working/outputs \
+  --verbose
+```
+
+## Output Artifacts
+
+Each run creates a fresh timestamped folder:
 
 ```text
 outputs/
@@ -72,88 +164,73 @@ outputs/
     ├── summary.json
     ├── errors.log
     ├── grid_comparison.png
-    └── per_image/
-        └── <stem>/
-            ├── original.png
-            ├── gt_mask.png
-            ├── importance_s3c.png
-            ├── importance_baseline.png
-            ├── seams_s3c.png
-            ├── seams_baseline.png
-            ├── resized_s3c.png
-            ├── resized_baseline.png
-            ├── carved_mask_s3c.png
-            ├── carved_mask_baseline.png
-            └── comparison.png
+    └── per_image/<image_id>/
+        ├── original.png
+        ├── gt_mask.png
+        ├── importance_basic.png         # if basic selected
+        ├── importance_baseline.png      # if baseline selected
+        ├── importance_s3c.png           # if s3c selected
+        ├── seams_basic.png
+        ├── seams_baseline.png
+        ├── seams_s3c.png
+        ├── resized_basic.png
+        ├── resized_baseline.png
+        ├── resized_s3c.png
+        ├── carved_mask_basic.png
+        ├── carved_mask_baseline.png
+        ├── carved_mask_s3c.png
+        ├── comparison.png               # dynamic method panel with metrics
+        └── comparison_methods.png       # same dynamic method panel
 ```
 
-## Map Definitions
+## Metrics and Meaning
 
-- `E_g`: Sobel gradient magnitude on Lab L channel.
-- `E_s`: cluster saliency from Lab+Gabor with contrast and center-bias cue.
-- `E_sh`: shadow map from GT mask (`gt` mode) or classical Lab local-illumination detector (`auto` mode).
-- `E_str`: structure tensor coherence-strength map with line-detector enhancement.
+Logged in `metrics.csv` per `(image_id, method)`:
 
-## How is S3C different from Hashemzadeh 2019?
+- `runtime_sec`: per-image wall time
+- `shadow_iou`: IoU between resized original GT mask and carved mask
+- `shadow_preservation_ratio`: carved shadow area / expected scaled area
+- `structure_edge_corr`: Pearson correlation of edge-density grids
+- `ssim_vs_rescaled`: SSIM against naively resized original
+- `seam_through_shadow_pct`: percent of removed seam pixels crossing shadow
 
-### 2.1 Structure map `E_str` (new fourth map)
+`summary.json` stores means/std and includes:
 
-Compute a **structure tensor**-based map:
+- `s3c_vs_baseline_diagnostic.shadow_iou`
+- `s3c_vs_baseline_diagnostic.shadow_preservation_ratio`
+- `s3c_vs_baseline_diagnostic.seam_through_shadow_pct_half_or_better`
 
-```text
-J_σ = G_σ * [[Ix·Ix, Ix·Iy], [Ix·Iy, Iy·Iy]]
-λ1, λ2 = eigenvalues of J_σ at each pixel  (λ1 ≥ λ2)
-coherence    c = ((λ1 - λ2) / (λ1 + λ2 + ε))^2     # high on lines/edges, low on corners and flats
-edge_strength e = λ1 + λ2                          # gradient energy
-E_str = normalize(coherence × edge_strength)
+## How S3C Differs from Baseline
+
+S3C extends the baseline with:
+
+1. Structure map (`E_str`) from structure tensor coherence and line cues.
+2. Dual shadow-map modes:
+   - GT-feathered map (`gt`)
+   - Lab-based classical detector (`auto`)
+3. Additive dual-penalty energy:
+   - shadow-boundary crossing penalty
+   - high-structure crossing penalty
+4. Shadow-aware forward energy branch term.
+5. Seam-consistent mask/map tracking.
+6. Bilateral seam smoothing (instead of simple 2-point averaging).
+
+## Reproducibility
+
+- Use `--seed` for deterministic sample selection.
+- `sampled_images.txt` records exact filenames.
+- `config.json` records full hyperparameters per run.
+
+## Testing
+
+Run smoke test:
+
+```bash
+python -m pytest -q
 ```
 
-Augment with a **line-segment detector** (`cv2.createLineSegmentDetector` is deprecated; use `cv2.ximgproc.createFastLineDetector` if `opencv-contrib-python` is installed, otherwise fall back to a Hough-based line mask). Add detected line pixels to `E_str` with weight `w_line` (default 1.5).
+## Notes and Current Status
 
-`σ` for the Gaussian in the tensor: default 1.5 px, configurable.
-
-### 2.2 Shadow map `E_sh` — two modes
-
-- **`--shadow-mode gt`**: load the corresponding mask from the dataset (mask folder), binarize, light Gaussian feather (σ=1) to soften the boundary. Use this for the SBU images.
-- **`--shadow-mode auto`**: improved unsupervised detector. Convert to **CIE Lab**; combine low-L with low chroma divergence from the local illumination model. Specifically:
-  - `L_norm = L / 100`
-  - illumination invariant ratio: `r = (L_norm + ε) / (mean_L_local + ε)` over a 51×51 window
-  - shadow candidate if `r < τ_r` (default 0.65) AND `chroma_diff < τ_c` from local mean
-  - morphological open/close to clean, then connected-component filter to drop tiny blobs (< 0.1% image area)
-  - This is strictly better than the YCbCr threshold approach because it is illumination-aware and not fooled by globally dark images.
-
-Output `E_sh` ∈ [0, 1] (soft, not binary) so multiplicative fusion is not brittle.
-
-### 2.3 Dual penalty-augmented seam cost (the core algorithmic contribution)
-
-Replace the baseline's pure multiplicative fusion with an **additive-with-penalty** formulation:
-
-```text
-E_base(i, j)    = α·E_g  +  β·E_s  +  γ·E_sh  +  δ·E_str
-penalty_shadow  = P_sh · 1[boundary_of(E_sh) at (i, j)]
-penalty_struct  = P_st · 1[E_str(i, j) > τ_str]
-E(i, j)         = E_base(i, j) + penalty_shadow + penalty_struct
-```
-
-Defaults: `α=1.0, β=2.0, γ=2.5, δ=2.0`, `P_sh = 10·max(E_base)`, `P_st = 10·max(E_base)`, `τ_str = 0.5`.
-
-### 2.4 Shadow-aware forward energy
-
-Extend Rubinstein's forward-energy cost with an additional shadow-discontinuity term:
-
-```text
-C_*_S(i, j) = ‖E_sh(neighbor_after_removal) - E_sh(other_neighbor_after_removal)‖
-```
-
-Add `λ_sh · C_*_S` to each forward cost branch.
-
-### 2.5 Seam-consistent mask tracking
-
-Every seam removed from the image is also removed from shadow/auxiliary maps. Metrics include:
-
-- `Shadow Preservation Ratio (SPR)`
-- `Shadow IoU`
-
-### 2.6 Anti-aliasing — bilateral averaging
-
-S3C uses a 1D bilateral filter on seam lines (window=5, σ_spatial=1.5, σ_range=15), while baseline uses 2-point averaging.
+- The pipeline is stable on local and Kaggle.
+- S3C consistently improves shadow IoU and shadow preservation ratio over baseline in tested runs.
+- The strict criterion `seam_through_shadow_pct <= 50% of baseline` is improved substantially but may still fail on some batches; this is explicitly logged in `summary.json` and `errors.log`.
