@@ -71,12 +71,37 @@ def save_global_grid_dynamic(
     rows: list[tuple[np.ndarray, dict[str, np.ndarray], np.ndarray | None]],
     method_order: list[str],
     method_titles: dict[str, str],
+    rows_per_file: int = 80,
+) -> None:
+    if rows_per_file <= 0:
+        raise ValueError("rows_per_file must be positive.")
+
+    chunks = [rows[i : i + rows_per_file] for i in range(0, len(rows), rows_per_file)]
+    for page_index, chunk in enumerate(chunks, start=1):
+        page_path = path if page_index == 1 else path.with_name(f"{path.stem}_{page_index:03d}{path.suffix}")
+        _save_global_grid_page(
+            page_path,
+            chunk,
+            method_order,
+            method_titles,
+            page_label=f"{page_index}/{len(chunks)}" if len(chunks) > 1 else None,
+        )
+
+
+def _save_global_grid_page(
+    path: Path,
+    rows: list[tuple[np.ndarray, dict[str, np.ndarray], np.ndarray | None]],
+    method_order: list[str],
+    method_titles: dict[str, str],
+    page_label: str | None,
 ) -> None:
     cols = 2 + len(method_order)  # original + methods + mask
     n = len(rows)
-    fig, axs = plt.subplots(n, cols, figsize=(4 * cols, 3.8 * n))
+    fig, axs = plt.subplots(n, cols, figsize=(3 * cols, 2.4 * n))
     if n == 1:
         axs = np.array([axs])
+    if page_label is not None:
+        fig.suptitle(f"Grid comparison page {page_label}", fontsize=12)
     for i, (orig, method_imgs, mask) in enumerate(rows):
         axs[i, 0].imshow(orig)
         axs[i, 0].set_title("Original")
@@ -90,5 +115,5 @@ def save_global_grid_dynamic(
         axs[i, cols - 1].set_title("GT Mask")
         axs[i, cols - 1].axis("off")
     plt.tight_layout()
-    fig.savefig(path, dpi=150)
+    fig.savefig(path, dpi=100, pil_kwargs={"optimize": True})
     plt.close(fig)
