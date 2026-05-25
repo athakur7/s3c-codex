@@ -19,6 +19,7 @@ PROJECT_DIR = Path(__file__).resolve().parent
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
+from s3c.baseline.basic import run_basic
 from s3c.baseline.hashemzadeh import run_baseline
 from s3c.config import S3CConfig
 from s3c.data.loader import ImageSample, discover_samples, sample_images
@@ -27,7 +28,7 @@ from s3c.metrics.shadow_metrics import shadow_iou, shadow_preservation_ratio
 from s3c.metrics.structure_metrics import structure_edge_corr
 from s3c.s3c_method import run_s3c
 from s3c.utils import configure_logging, normalize_map, read_rgb, save_json, save_png, timestamped_run_dir
-from s3c.viz.compare import save_comparison_panel, save_global_grid
+from s3c.viz.compare import save_global_grid_dynamic, save_method_panel
 
 logger = logging.getLogger("s3c.run")
 
@@ -158,6 +159,22 @@ def process_one(sample: ImageSample, config: S3CConfig, run_dir: Path) -> dict[s
             "seam_through_shadow_pct": baseline.seam_through_shadow_pct,
         }
 
+    if "basic" in config.methods:
+        basic = run_basic(image, target_w, initial_mask=gt_mask)
+        save_png(img_dir / "importance_basic.png", normalize_map(basic.importance))
+        save_png(img_dir / "seams_basic.png", basic.seam_overlay)
+        save_png(img_dir / "resized_basic.png", basic.image)
+        save_png(img_dir / "carved_mask_basic.png", basic.mask)
+        renders["basic"] = basic.image
+        results["basic"] = {
+            "runtime_sec": basic.runtime_sec,
+            "shadow_iou": shadow_iou(gt_mask, basic.mask, basic.mask.shape),
+            "shadow_preservation_ratio": shadow_preservation_ratio(gt_mask, basic.mask, target_w / w),
+            "structure_edge_corr": structure_edge_corr(image, basic.image),
+            "ssim_vs_rescaled": ssim_vs_rescaled(image, basic.image),
+            "seam_through_shadow_pct": basic.seam_through_shadow_pct,
+        }
+
     if "s3c" in config.methods:
         s3c_res = run_s3c(image, target_w, config, sample.mask_path, initial_mask=gt_mask)
         save_png(img_dir / "importance_s3c.png", normalize_map(s3c_res.importance))
@@ -185,24 +202,22 @@ def process_one(sample: ImageSample, config: S3CConfig, run_dir: Path) -> dict[s
         mask_vis = (baseline.mask > 0.5).astype(np.float32)  # noqa: F821
     else:
         mask_vis = np.zeros((h, target_w), dtype=np.float32)
-    baseline_text = "Hashemzadeh"
-    s3c_text = "S3C"
-    if "baseline" in results:
-        b = results["baseline"]
-        baseline_text = f"Hashemzadeh - SPR {b['shadow_preservation_ratio']:.2f}, IoU {b['shadow_iou']:.2f}"
-    if "s3c" in results:
-        s = results["s3c"]
-        s3c_text = f"S3C - SPR {s['shadow_preservation_ratio']:.2f}, IoU {s['shadow_iou']:.2f}"
-    save_comparison_panel(
-        img_dir / "comparison.png",
-        image,
-        base_img,
-        s3c_img,
-        mask_vis,
-        baseline_text=baseline_text,
-        s3c_text=s3c_text,
-        mask_title="GT Mask" if gt_mask is not None else "Shadow Map Used",
-    )
+    method_labels = {"basic": "Basic", "baseline": "Hashemzadeh", "s3c": "S3C"}
+    dynamic_panels: list[tuple[str, np.ndarray, str | None]] = [("Original", image, None)]
+    for method_name in [m for m in ("basic", "baseline", "s3c") if m in config.methods]:
+        if method_name not in renders:
+            continue
+        label = method_labels[method_name]
+        met = results.get(method_name, {})
+        if "shadow_preservation_ratio" in met and "shadow_iou" in met:
+            label = f"{label} - SPR {met['shadow_preservation_ratio']:.2f}, IoU {met['shadow_iou']:.2f}"
+        dynamic_panels.append((label, renders[method_name], None))
+    if gt_mask is not None:
+        dynamic_panels.append(("GT Mask", gt_mask, "gray"))
+    else:
+        dynamic_panels.append(("Shadow Map Used", mask_vis, "gray"))
+    save_method_panel(img_dir / "comparison.png", dynamic_panels)
+    save_method_panel(img_dir / "comparison_methods.png", dynamic_panels)
     return results
 
 
@@ -228,7 +243,7 @@ def main() -> None:
     (run_dir / "sampled_images.txt").write_text("\n".join(names), encoding="utf-8")
 
     rows: list[dict[str, Any]] = []
-    grid_rows = []
+    grid_rows: list[tuple[np.ndarray, dict[str, np.ndarray], np.ndarray | None]] = []
     success = 0
     def _collect_result(res: dict[str, Any]) -> None:
         nonlocal success
@@ -242,10 +257,13 @@ def main() -> None:
             rows.append({"image_id": image_id, "method": method, "orig_h": orig_h, "orig_w": orig_w, "new_w": new_w, **met})
         img_dir = run_dir / "per_image" / image_id
         orig = read_rgb(img_dir / "original.png")
-        base = read_rgb(img_dir / "resized_baseline.png") if (img_dir / "resized_baseline.png").exists() else np.zeros_like(orig)
-        s3c = read_rgb(img_dir / "resized_s3c.png") if (img_dir / "resized_s3c.png").exists() else np.zeros_like(orig)
-        mask = np.array(read_rgb(img_dir / "gt_mask.png"))[:, :, 0] if (img_dir / "gt_mask.png").exists() else np.zeros(base.shape[:2], dtype=np.uint8)
-        grid_rows.append((orig, base, s3c, mask))
+        method_imgs: dict[str, np.ndarray] = {}
+        for method in ("basic", "baseline", "s3c"):
+            p = img_dir / f"resized_{method}.png"
+            if p.exists():
+                method_imgs[method] = read_rgb(p)
+        mask = np.array(read_rgb(img_dir / "gt_mask.png"))[:, :, 0] if (img_dir / "gt_mask.png").exists() else None
+        grid_rows.append((orig, method_imgs, mask))
 
     if cfg.executor == "serial" or cfg.workers <= 1:
         for sample in tqdm(samples, total=len(samples), desc="Processing images"):
@@ -273,11 +291,13 @@ def main() -> None:
                     logger.exception("Failed image %s: %s", sample.image_id, e)
 
     if grid_rows:
-        save_global_grid(run_dir / "grid_comparison.png", grid_rows)
+        method_order = [m for m in ("basic", "baseline", "s3c") if m in cfg.methods]
+        method_titles = {"basic": "Basic", "baseline": "Hashemzadeh", "s3c": "S3C"}
+        save_global_grid_dynamic(run_dir / "grid_comparison.png", grid_rows, method_order, method_titles)
 
     with (run_dir / "metrics.csv").open("w", newline="", encoding="utf-8") as f:
         if rows:
-            keys = list(rows[0].keys())
+            keys = sorted({k for r in rows for k in r.keys()})
             w = csv.DictWriter(f, fieldnames=keys)
             w.writeheader()
             w.writerows(rows)

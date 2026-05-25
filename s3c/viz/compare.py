@@ -50,3 +50,45 @@ def save_global_grid(path: Path, rows: list[tuple[np.ndarray, np.ndarray, np.nda
     plt.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
+
+
+def save_method_panel(path: Path, panels: list[tuple[str, np.ndarray, str | None]]) -> None:
+    n = len(panels)
+    fig, axs = plt.subplots(1, n, figsize=(4 * n, 4))
+    if n == 1:
+        axs = [axs]
+    for i, (title, img, cmap) in enumerate(panels):
+        axs[i].imshow(img, cmap=cmap)
+        axs[i].set_title(title)
+        axs[i].axis("off")
+    plt.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+
+def save_global_grid_dynamic(
+    path: Path,
+    rows: list[tuple[np.ndarray, dict[str, np.ndarray], np.ndarray | None]],
+    method_order: list[str],
+    method_titles: dict[str, str],
+) -> None:
+    cols = 2 + len(method_order)  # original + methods + mask
+    n = len(rows)
+    fig, axs = plt.subplots(n, cols, figsize=(4 * cols, 3.8 * n))
+    if n == 1:
+        axs = np.array([axs])
+    for i, (orig, method_imgs, mask) in enumerate(rows):
+        axs[i, 0].imshow(orig)
+        axs[i, 0].set_title("Original")
+        axs[i, 0].axis("off")
+        for j, method in enumerate(method_order, start=1):
+            img = method_imgs.get(method, np.zeros_like(orig))
+            axs[i, j].imshow(img)
+            axs[i, j].set_title(method_titles.get(method, method))
+            axs[i, j].axis("off")
+        axs[i, cols - 1].imshow(mask if mask is not None else np.zeros(orig.shape[:2], dtype=np.uint8), cmap="gray")
+        axs[i, cols - 1].set_title("GT Mask")
+        axs[i, cols - 1].axis("off")
+    plt.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
